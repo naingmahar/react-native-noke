@@ -149,11 +149,20 @@
     ]
   },
   "codegenConfig": {
-    "name": "NokeSpec",
+    "name": "NativeNokeSpec",
     "type": "modules",
     "jsSrcsDir": "src",
     "android": {
-      "javaPackageName": "com.noke"
+      "javaPackageName": "com.rn.nativenoke"
+    },
+    "ios": {
+      "modulesProvider": {
+        "NativeRNNoke": "RCTNativeNoke" 
+      }
+    },
+    "outputDir": {
+      "ios": "ios/generated",
+      "android": "android/generated"
     }
   },
   "create-react-native-library": {

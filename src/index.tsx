@@ -1,5 +1,3 @@
-import Noke from './NativeNoke';
+import NativeNokeModule from './NativeNoke';
 
-export function multiply(a: number, b: number): number {
-  return Noke.multiply(a, b);
-}
+export default NativeNokeModule;
