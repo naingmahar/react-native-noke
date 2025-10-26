@@ -52,7 +52,7 @@ public class NativeNokeImpl: RCTEventEmitter {
         }
       self.isNokeInitialized = true
         // Use our internal status updater to send the initialization event
-//        updateNokeStatus(status: "initialized", noke: nil, message: "SDK Initialized")
+       updateNokeStatus(status: "initialized", noke: nil, message: "SDK Initialized")
     }
 
     @objc public func addDevices(_ devices: [NSDictionary]){
