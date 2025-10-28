@@ -1,10 +1,8 @@
-// NokeModuleImpl.swift
 
 import Foundation
+import NokeMobileLibrary
 import React
-import NokeMobileLibrary // Required import for Noke SDK functionality
 
-// MARK: - Event Constants (From User Input)
 
 struct NokeEvents {
     static let CONNECTING = "connecting"
@@ -18,228 +16,216 @@ struct NokeEvents {
     static let BLUETOOTH_OFF = "bluetooth_off"
 }
 
-// Renamed and set to match the name used in the Objective-C++ shim (RCTNativeNoke.mm)
-@objc(NativeNokeImpl)
-public class NativeNokeImpl: RCTEventEmitter {
-
-
-  // MARK: - State and Initialization
+@objc(NativeNokeModule)
+public class NativeNokeModule: NSObject {
   
-  // Static reference for delegate callbacks to find the active module instance
-    private static var instance: NativeNokeImpl?
-    
-    var currentConnectedDevice : NokeDevice? = nil
-    var hasListeners: Bool = false // Tracks if JS is listening
-  @objc public static let shared = NativeNokeImpl()
-  var isNokeInitialized: Bool = false
+  var nokeErrorMessage : String? = nil
   
-    override init() {
-        super.init()
-      NativeNokeImpl.instance = self
-        // Set the Noke SDK delegate to this instance immediately
-        NokeDeviceManager.shared().delegate = self
-    }
-   
-    // Matches @objc func initNoke() from your original code
-    @objc(initNoke:productionBundleName:)
-    public func initNoke(apiKey:String,productionBundleName:String) {
-        NokeDeviceManager.shared().setAPIKey(apiKey)
+  var nokeDevices = [NokeDevice]()
+  var currentConnectedDevice : NokeDevice? = nil
+  
+  var previousStatus: String = ""
+  
+  @objc public static let shared = NativeNokeModule()
+  
+  @objc public func initNoke(_ apiKey: String, productionBundleName: String) {
+        NokeDeviceManager.shared().setAPIKey("dba1586f-2992-442d-a4e7-970b43ee420d")
         let bundleID = Bundle.main.bundleIdentifier
-        if bundleID == productionBundleName {
-            NokeDeviceManager.shared().setLibraryMode(NokeLibraryMode.PRODUCTION)
+        if bundleID == "com.extraspaceasia.loyalty" {
+          NokeDeviceManager.shared().setLibraryMode(NokeLibraryMode.PRODUCTION)
         } else {
-            NokeDeviceManager.shared().setLibraryMode(NokeLibraryMode.SANDBOX)
+          NokeDeviceManager.shared().setLibraryMode(NokeLibraryMode.SANDBOX)
         }
-      self.isNokeInitialized = true
-        // Use our internal status updater to send the initialization event
-       updateNokeStatus(status: "initialized", noke: nil, message: "SDK Initialized")
-    }
-
-    @objc public func addDevices(_ devices: [NSDictionary]){
+        NokeDeviceManager.shared().delegate = self
+  }
+  
+  @objc public func addDevices(_ devices: [Any]) {
         debugPrint("ESNOKE Adding devices to Noke")
         NokeDeviceManager.shared().removeAllNoke()
-        for noke in devices {
-            let deviceName = noke["name"]
-            let deviceMac = noke["mac"]
-            let device = NokeDevice.init(name: "\(deviceName!)", mac: "\(deviceMac!)")
-            NokeDeviceManager.shared().addNoke(device!)
+        for item in devices {
+          if let dict = item as? NSDictionary,
+             let name = dict["name"] as? String,
+             let mac = dict["mac"] as? String {
+              if let noke = NokeDevice(name: name, mac: mac) {
+                  NokeDeviceManager.shared().addNoke(noke)
+              }
+              print("✅ Added Noke device:", name, mac)
+          } else {
+              print("⚠️ Invalid device item:", item)
+          }
         }
-    }
-
-    @objc public func startScan() {
+  }
+  
+  @objc public func startScan() {
         debugPrint("ESNOKE Starting scan")
         NokeDeviceManager.shared().startScanForNokeDevices()
-    }
-
-    @objc public func stopScan() {
+  }
+  
+  @objc public func stopScan() {
         debugPrint("ESNOKE Stopping scan")
         NokeDeviceManager.shared().stopScan()
-    }
-
-    @objc public func unlockDevice(_ command : String) ->Void {
+  }
+  
+  @objc public func unlockDevice(_ command: String) {
         guard let nokeDevice = self.currentConnectedDevice else {
-            return
+          return
         }
         nokeDevice.sendCommands(command)
         debugPrint("ESNOKE Unlock command sent")
-    }
-
-    // Adjusted signature to match the TurboModule specification: (withKey: cmd: callback:)
-    @objc public func offlineUnlockDevice(withKey key: String, cmd: String) {
+  }
+  
+  @objc public func offlineUnlockDevice(_ key: String, cmd: String) {
         guard let nokeDevice = self.currentConnectedDevice else {
-            // Error case, send null for success result and a message for error result
-            return
+          return
         }
         let result = nokeDevice.offlineUnlock(key: key, command: cmd, addTimestamp: false)
         debugPrint("ESNOKE key: " + key)
         debugPrint("ESNOKE cmd: " + cmd)
         debugPrint("ESNOKE Offline unlock command sent " + result.description)
-        
-        // Success case: pass null for error, result description for success
         return
-    }
 
-    @objc public func connectDevice(_ mac : String) {
+  }
+  
+  @objc public func connectDevice(_ mac: String) {
         let filtered = NokeDeviceManager.shared().nokeDevices.filter{ $0.value.mac == mac }.first?.value
         if let data = filtered {
-            NokeDeviceManager.shared().connectToNokeDevice(data)
+          NokeDeviceManager.shared().connectToNokeDevice(data)
         }
-    }
-
-    @objc public func disconnectDevice(_ deviceName: String, deviceMac: String) {
+  }
+  
+  @objc public func disconnectDevice(_ deviceName: String, deviceMac: String) {
         let device = NokeDevice.init(name: "\(deviceName)", mac: "\(deviceMac)")
         NokeDeviceManager.shared().disconnectNokeDevice(device!)
-    }
-
-    @objc public func clearDevices() {
-        NokeDeviceManager.shared().removeAllNoke()
-    }
-
-    // --- TurboModule Event Plumbing ---
+  }
   
-  // Required by RCTEventEmitter
-  override public func supportedEvents() -> [String]! {
-      // You only send one event type, so declare it here.
-      return ["nokeServiceUpdated"]
+  @objc public func clearDevices() {
+        NokeDeviceManager.shared().removeAllNoke()
   }
-
-  // Required by RCTEventEmitter
-  override public func startObserving() {
-      super.startObserving()
-      self.hasListeners = true
-
-      // Check flag and send deferred event
-      if self.isNokeInitialized {
-           DispatchQueue.main.async {
-               self.updateNokeStatus(status: "initialized", noke: nil, message: "SDK Initialized")
-           }
-      }
-  }
-
-  // Required by RCTEventEmitter
-  override public func stopObserving() {
-      // Called when the last JS listener is removed
-      super.stopObserving()
-      self.hasListeners = false // Keep your internal flag
-  }
-
-  // Required by RCTBridge to know setup time
-  @objc public override class func requiresMainQueueSetup() -> Bool {
-      return true
-  }
-
-
-    // MARK: - Event Emission Helper
-
-    // Status updater utility (based on your original updateNokeStatus method)
-    internal func updateNokeStatus(status : String, noke : NokeDevice?, message: String?) -> Void {
-      
-      // Check the hasListeners flag set by start/stopObserving
-        if !self.hasListeners {
-            print("NativeNokeImpl: Cannot send event '\(status)'. No listeners registered.")
-            return
-        }
-        var params: [String: Any] = ["status" : status]
-        params["name"] = noke?.name ?? ""
-        params["mac"] = noke?.mac ?? ""
-        params["session"] = noke?.session ?? ""
-        if (status == NokeEvents.ERROR) {
-            params["error"] = message ?? ""
-        }
-        
-        // Dispatch event using the Emitter helper
-        self.sendEvent(withName: "nokeServiceUpdated", body: params)
-    }
+  
+//  @objc public static func moduleName() -> String! {
+//    return "NativeRNNoke"
+//  }
+//  
+//  func getTurboModule(_ params: Any!) -> Any! {
+//    return self
+//  }
 }
 
 
-
-
-// -------------------------------------------------------------------------
-// MARK: - NokeDeviceManagerDelegate Extension
-// -------------------------------------------------------------------------
-
-extension NativeNokeImpl : NokeDeviceManagerDelegate {
-  
-  // Ensure delegate methods use the static instance reference to call the helper
-  private func delegateUpdateStatus(status : String, noke : NokeDevice?, message: String?) {
-    NativeNokeImpl.instance?.updateNokeStatus(status: status, noke: noke, message: message)
-  }
+extension NativeNokeModule : NokeDeviceManagerDelegate{
+  public func nokeReadyForFirmwareUpdate(noke: NokeDevice) {}
 
   public func nokeDeviceDidUpdateState(to state: NokeDeviceConnectionState, noke: NokeDevice) {
-        switch state {
+    switch state {
         case .Discovered:
-            delegateUpdateStatus(status: NokeEvents.DISCOVERED, noke: noke, message: "")
+      updateNokeStatus(status: NokeEvents.DISCOVERED, noke: noke, message: "")
             break
         case .Connected:
-            debugPrint("ESNOKE device connected: " + noke.name)
-            currentConnectedDevice = noke
-            delegateUpdateStatus(status: NokeEvents.CONNECTED, noke: noke, message: "")
+          debugPrint("[ESNOKE] device connected: " + noke.name)
+          currentConnectedDevice = noke
+      updateNokeStatus(status: NokeEvents.CONNECTED, noke: noke, message: "")
             break
         case .Syncing:
-            debugPrint("ESNOKE device syncing: " + noke.name)
-            delegateUpdateStatus(status: NokeEvents.SYNCING, noke: noke, message: "")
+          debugPrint("[ESNOKE] device syncing: " + noke.name)
+      updateNokeStatus(status: NokeEvents.SYNCING, noke: noke, message: "")
             break
         case .Unlocked:
-            debugPrint("ESNOKE device unlocked: " + noke.name)
-            delegateUpdateStatus(status: NokeEvents.UNLOCKED, noke: noke, message: "")
+          debugPrint("[ESNOKE] device unlocked: " + noke.name)
+      updateNokeStatus(status: NokeEvents.UNLOCKED, noke: noke, message: "")
             break
         case .Disconnected:
-            debugPrint("ESNOKE device disconnected: " + noke.name)
-            currentConnectedDevice = nil // Important: clear current device on disconnect
-            delegateUpdateStatus(status: NokeEvents.DISCONNECTED, noke: noke, message: "")
+          debugPrint("[ESNOKE] device disconnected: " + noke.name)
+      updateNokeStatus(status: NokeEvents.DISCONNECTED, noke: noke, message: "")
             break
         default:
-            debugPrint("ESNOKE device Undefine Something: " + noke.name)
+          debugPrint("[ESNOKE] device Undefine Something: " + noke.name)
             break
         }
     }
 
-  public func nokeErrorDidOccur(error: NokeDeviceManagerError, message: String, noke: NokeDevice?) {
-        debugPrint("ESNOKE error: \(error.rawValue)")
-        debugPrint("ESNOKE error message: " + message)
-        delegateUpdateStatus(status: NokeEvents.ERROR, noke: noke, message: message)
-    }
+  func updateNokeStatus(status : String, noke : NokeDevice?, message: String?) -> Void {
+      var params = ["status" : status]
+      params["name"] = noke?.name ?? ""
+      params["mac"] = noke?.mac ?? ""
+      params["session"] = noke?.session ?? ""
+      if (status == NokeEvents.ERROR) {
+        params["error"] = message ?? ""
+      }
+    NativeNokeEmitter.shared?.emit("nokeServiceUpdated", params)
+  }
 
+  public func nokeErrorDidOccur(error: NokeDeviceManagerError, message: String, noke: NokeDevice?) {
+    debugPrint("[ESNOKE] error: \(error.rawValue)")
+    debugPrint("[ESNOKE] error message: " + message)
+    updateNokeStatus(status: NokeEvents.ERROR, noke: noke, message: message)
+  }
+
+  public func nokeDeviceDidShutdown(noke: NokeDevice, isLocked: Bool, didTimeout: Bool) {}
+
+  public func didUploadData(result: Int, message: String) {}
 
   public func bluetoothManagerDidUpdateState(state: NokeManagerBluetoothState) {
-        switch (state) {
+    switch (state) {
         case NokeManagerBluetoothState.poweredOn:
-            debugPrint("NOKE MANAGER ON")
+            debugPrint("[NOKE] MANAGER ON")
             NokeDeviceManager.shared().startScanForNokeDevices()
             break
         case NokeManagerBluetoothState.poweredOff:
-            debugPrint("NOKE MANAGER OFF")
-            delegateUpdateStatus(status: NokeEvents.BLUETOOTH_OFF, noke: nil, message: "Bluetooth Off")
+            debugPrint("[NOKE] MANAGER OFF")
             break
         default:
-          debugPrint("NOKE MANAGER UNSUPPORTED/UNKNOWN - State: \(state.rawValue)")
-          delegateUpdateStatus(status: NokeEvents.ERROR, noke: nil, message: "Bluetooth Unsupported or Unknown State.")
-          break
+            debugPrint("[NOKE] MANAGER UNSUPPORTED")
+            break
         }
     }
-  
-  public func nokeReadyForFirmwareUpdate(noke: NokeDevice) {}
-  public func nokeDeviceDidShutdown(noke: NokeDevice, isLocked: Bool, didTimeout: Bool) {}
-  public func didUploadData(result: Int, message: String) {}
 }
+
+
+@objc(NativeNokeEmitter)
+class NativeNokeEmitter: RCTEventEmitter {
+  // Singleton reference used across the SDK
+    public static var shared: NativeNokeEmitter?
+
+    private var hasListeners = false
+
+    override init() {
+      super.init()
+      print("[NOKE] Init")
+      NativeNokeEmitter.shared = self
+    }
+  
+  
+  // React Native requires this for event setup
+  override static func requiresMainQueueSetup() -> Bool {
+    return true
+  }
+
+  // Declare supported event names
+  override func supportedEvents() -> [String]! {
+    return [
+      "nokeServiceUpdated",
+    ]
+  }
+
+  override func startObserving() {
+    print("[NOKE] Start observing events")
+    hasListeners = true
+  }
+
+  override func stopObserving() {
+    print("[NOKE] Stop observing events")
+    hasListeners = false
+  }
+
+  /// Safe emitter helper — used by NativeNokeModule
+  @objc func emit(_ name: String, _ body: [String: Any]) {
+    guard hasListeners else {
+      print("⚠️ [NOKE] No JS listeners for event: \(name)")
+      return
+    }
+    sendEvent(withName: name, body: body)
+  }
+}
+
+
+  
