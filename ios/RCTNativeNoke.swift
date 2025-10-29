@@ -118,7 +118,7 @@ extension NativeNokeModule : NokeDeviceManagerDelegate{
   public func nokeDeviceDidUpdateState(to state: NokeDeviceConnectionState, noke: NokeDevice) {
     switch state {
         case .Discovered:
-      updateNokeStatus(status: NokeEvents.DISCOVERED, noke: noke, message: "")
+      updateNokeDiscoverDevice(status: NokeEvents.DISCOVERED, noke: noke, message: "")
             break
         case .Connected:
           debugPrint("[ESNOKE] device connected: " + noke.name)
@@ -152,6 +152,17 @@ extension NativeNokeModule : NokeDeviceManagerDelegate{
         params["error"] = message ?? ""
       }
     NativeNokeEmitter.shared?.emit("nokeServiceUpdated", params)
+  }
+  
+  func updateNokeDiscoverDevice(status : String, noke : NokeDevice?, message: String?) -> Void {
+      var params = ["status" : status]
+      params["name"] = noke?.name ?? ""
+      params["mac"] = noke?.mac ?? ""
+      params["session"] = noke?.session ?? ""
+      if (status == NokeEvents.ERROR) {
+        params["error"] = message ?? ""
+      }
+    NativeNokeEmitter.shared?.emit("nokeDiscoverDeviceUpdated", params)
   }
 
   public func nokeErrorDidOccur(error: NokeDeviceManagerError, message: String, noke: NokeDevice?) {
@@ -204,6 +215,7 @@ class NativeNokeEmitter: RCTEventEmitter {
   override func supportedEvents() -> [String]! {
     return [
       "nokeServiceUpdated",
+      "nokeDiscoverDeviceUpdated"
     ]
   }
 
