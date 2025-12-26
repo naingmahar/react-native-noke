@@ -26,7 +26,7 @@ def getExtOrIntegerDefault(name) {
 }
 
 android {
-  namespace "com.noke"
+  namespace "com.nmhnoke"
 
   compileSdkVersion getExtOrIntegerDefault("compileSdkVersion")
 
